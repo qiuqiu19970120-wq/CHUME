@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>豪哥專業貨運單系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'PingFang TC', sans-serif; }
+        .report-bg { background-color: #111827; color: #fbbf24; border: 2px solid #fbbf24; }
+        .watermark-text { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: rgba(251, 191, 36, 0.08); font-weight: bold; pointer-events: none; z-index: 10; transform: rotate(-15deg); }
+        .col-grid { grid-template-columns: 1.5fr 3fr 1.5fr 2fr 0.5fr; }
+        .btn-active:active { transform: scale(0.95); background-color: #d97706 !important; }
+    </style>
+</head>
+<body class="p-4 bg-slate-950">
+
+    <div class="max-w-md mx-auto space-y-6">
+        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-700">
+            <h2 id="formTitle" class="text-white font-bold mb-4">新增貨運紀錄</h2>
+            <input type="hidden" id="editIdx" value="-1">
+            <div class="grid grid-cols-3 gap-2 mb-3">
+                <select id="y" class="bg-slate-800 p-2 rounded text-sm text-center"></select>
+                <select id="m" class="bg-slate-800 p-2 rounded text-sm text-center"></select>
+                <select id="d" class="bg-slate-800 p-2 rounded text-sm text-center"></select>
+            </div>
+            <input type="text" id="loc" placeholder="地點/建案" class="w-full bg-slate-800 p-2 rounded mb-2 text-sm">
+            <input type="number" id="amt" placeholder="運送金額" class="w-full bg-slate-800 p-2 rounded mb-2 text-sm">
+            <input type="text" id="rem" placeholder="備註" class="w-full bg-slate-800 p-2 rounded mb-4 text-sm">
+            <button onclick="save()" class="w-full bg-amber-500 text-black font-bold py-2 rounded btn-active transition-all">儲存紀錄</button>
+            <button id="cancelBtn" onclick="resetForm()" class="w-full bg-slate-700 text-white py-2 rounded mt-2 hidden">取消修改</button>
+        </div>
+
+        <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 flex gap-2">
+            <select id="filterY" onchange="update()" class="bg-slate-800 p-2 rounded text-sm flex-1"></select>
+            <select id="filterM" onchange="update()" class="bg-slate-800 p-2 rounded text-sm flex-1"></select>
+        </div>
+
+        <div id="report" class="report-bg p-6 rounded-lg relative min-h-[400px]">
+            <div class="watermark-text">〔BZL-3151豪哥〕</div>
+            <h1 class="text-2xl font-bold mb-2">豪哥當月貨運費</h1>
+            <p class="text-sm mb-6 border-b border-amber-500/50 pb-4">對帳期間：<span id="repDate"></span></p>
+            
+            <div class="grid col-grid text-[10px] font-bold mb-4 border-b border-amber-500/50 pb-2 uppercase">
+                <div>日期</div><div>地點/建案</div><div>備註</div><div class="text-right">金額</div><div></div>
+            </div>
+            <div id="reportList" class="space-y-3 text-[12px]"></div>
+            
+            <div class="mt-8 pt-4 border-t border-amber-500/50">
+                <p>當月總趟數：<span id="repCount">0</span> 趟</p>
+                <p class="text-xl font-bold mt-2">本月總收入：$<span id="repTotal">0</span> 元</p>
+            </div>
+        </div>
+
+        <button onclick="prepareDownload()" class="w-full py-3 bg-white text-black font-bold rounded-xl">下載高畫質對帳單照片</button>
+    </div>
+
+    <div id="modal" class="fixed inset-0 bg-black/90 hidden z-50 flex flex-col items-center justify-center p-4">
+        <p class="text-white mb-4">請長按圖片選擇「儲存影像」</p>
+        <img id="preview" class="max-w-full border border-amber-500 rounded-lg">
+        <button onclick="document.getElementById('modal').classList.add('hidden')" class="mt-6 bg-red-600 text-white px-8 py-2 rounded-full">關閉</button>
+    </div>
+
+    <script>
+        let entries = JSON.parse(localStorage.getItem('entries')) || [];
+        function init() {
+            const year = new Date().getFullYear();
+            [document.getElementById('y'), document.getElementById('filterY')].forEach(el => {
+                for(let i=year; i<=year+40; i++) el.innerHTML += `<option>${i}年</option>`;
+            });
+            [document.getElementById('m'), document.getElementById('filterM')].forEach(el => {
+                for(let i=1; i<=12; i++) el.innerHTML += `<option>${i}月</option>`;
+            });
+            for(let i=1; i<=31; i++) document.getElementById('d').innerHTML += `<option>${i}日</option>`;
+        }
+        function save() {
+            const idx = parseInt(document.getElementById('editIdx').value);
+            const entry = { y:document.getElementById('y').value, m:document.getElementById('m').value, d:document.getElementById('d').value, loc:document.getElementById('loc').value, amt:document.getElementById('amt').value, rem:document.getElementById('rem').value };
+            if(idx === -1) entries.push(entry); else entries[idx] = entry;
+            localStorage.setItem('entries', JSON.stringify(entries));
+            resetForm(); update();
+        }
+        function edit(idx) {
+            const e = entries[idx];
+            document.getElementById('y').value = e.y; document.getElementById('m').value = e.m; document.getElementById('d').value = e.d;
+            document.getElementById('loc').value = e.loc; document.getElementById('amt').value = e.amt; document.getElementById('rem').value = e.rem;
+            document.getElementById('editIdx').value = idx;
+            document.getElementById('formTitle').innerText = '修改貨運紀錄';
+            document.getElementById('cancelBtn').classList.remove('hidden');
+        }
+        function remove(originalIdx) { 
+            entries.splice(originalIdx, 1); 
+            localStorage.setItem('entries', JSON.stringify(entries)); 
+            update(); 
+        }
+        function resetForm() {
+            document.getElementById('editIdx').value = '-1'; document.getElementById('formTitle').innerText = '新增貨運紀錄';
+            document.getElementById('cancelBtn').classList.add('hidden');
+        }
+        function update() {
+            const fy_num = parseInt(document.getElementById('filterY').value);
+            const fm_num = parseInt(document.getElementById('filterM').value);
+            
+            // 計算結帳區間：當月 25 日 ~ 下個月 25 日
+            let next_y = fy_num;
+            let next_m = fm_num + 1;
+            if (next_m === 13) {
+                next_m = 1;
+                next_y += 1;
+            }
+
+            document.getElementById('repDate').innerText = `${fy_num}年${fm_num}月25日 ~ ${next_y}年${next_m}月25日`;
+            
+            const displayData = entries.map((e, i) => ({...e, originalIdx: i}));
+            const filtered = displayData.filter(e => {
+                const ey = parseInt(e.y), em = parseInt(e.m), ed = parseInt(e.d);
+                // 條件：(今年今月且日期>=25) 或 (下個月且日期<=25)
+                const isCurrent = (ey === fy_num && em === fm_num && ed >= 25);
+                const isNext = (ey === next_y && em === next_m && ed <= 25);
+                return isCurrent || isNext;
+            }).sort((a,b) => {
+                // 依照完整日期進行排序 (跨月份也確保順序正確)
+                const dateA = new Date(parseInt(a.y), parseInt(a.m) - 1, parseInt(a.d));
+                const dateB = new Date(parseInt(b.y), parseInt(b.m) - 1, parseInt(b.d));
+                return dateA - dateB;
+            });
+
+            const list = document.getElementById('reportList');
+            list.innerHTML = filtered.map(e => `
+                <div class="grid col-grid items-center hover:bg-slate-800 p-1 rounded transition" onclick="edit(${e.originalIdx})">
+                    <div>${parseInt(e.m)}/${parseInt(e.d)}</div>
+                    <div class="break-words pr-2">${e.loc}</div>
+                    <div class="break-words pr-2 opacity-70">${e.rem}</div>
+                    <div class="text-right font-bold">$${parseInt(e.amt).toLocaleString()}</div>
+                    <button class="delete-btn text-red-400 font-bold hover:text-red-600 ml-2" onclick="event.stopPropagation(); remove(${e.originalIdx})">✕</button>
+                </div>
+            `).join('');
+            document.getElementById('repTotal').innerText = filtered.reduce((acc, cur) => acc + parseInt(cur.amt), 0).toLocaleString();
+            document.getElementById('repCount').innerText = filtered.length;
+        }
+        function prepareDownload() {
+            // 改用 opacity: 0 完全隱藏，保留空間讓版面不跑掉
+            const deleteBtns = document.querySelectorAll('.delete-btn');
+            deleteBtns.forEach(b => b.style.opacity = '0');
+
+            html2canvas(document.getElementById('report'), { scale: 3, windowWidth: 1000 }).then(canvas => {
+                document.getElementById('preview').src = canvas.toDataURL();
+                document.getElementById('modal').classList.remove('hidden');
+                
+                // 產生完畢後恢復按鈕顯示
+                deleteBtns.forEach(b => b.style.opacity = '1');
+            });
+        }
+        init(); update();
+    </script>
+</body>
+</html>
